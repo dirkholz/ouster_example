@@ -62,5 +62,21 @@ bool read_lidar_packet(const client& cli, uint8_t* buf);
  * @returns true if an imu packet was successfully read
  */
 bool read_imu_packet(const client& cli, uint8_t* buf);
+
+/**
+ * Get lidar intrinsics.
+ */
+std::string get_lidar_intrinsics(const client& cli);
+
+/**
+ * Get imu intrinsics.
+ */
+std::string get_imu_intrinsics(const client& cli);
+
+/**
+ * Get sensor info.
+ */
+std::string get_sensor_info(const client& cli);
+
 }
 }

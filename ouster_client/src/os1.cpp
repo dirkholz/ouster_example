@@ -21,6 +21,9 @@ using ns = std::chrono::nanoseconds;
 struct client {
     int lidar_fd;
     int imu_fd;
+    std::string lidar_intrinsics;
+    std::string imu_intrinsics;
+    std::string sensor_info;
     ~client() {
         close(lidar_fd);
         close(imu_fd);
@@ -107,9 +110,12 @@ std::shared_ptr<client> init_client(
     if (sock_fd < 0) return std::shared_ptr<client>();
 
     std::string cmd;
+    std::string lidar_intrinsics;
+    std::string imu_intrinsics;
+    std::string sensor_info;
 
     auto do_cmd = [&](const std::string& op, const std::string& val) {
-        const size_t max_res_len = 64;
+        const size_t max_res_len = 1024;
         char read_buf[max_res_len + 1];
 
         ssize_t len;
@@ -131,11 +137,20 @@ std::shared_ptr<client> init_client(
         auto res = std::string(read_buf);
         res.erase(res.find_last_not_of(" \r\n\t") + 1);
 
-        if (res != op) {
-            std::cerr << "init_client: command \"" << cmd << "\" failed with \""
-                      << res << "\"" << std::endl;
-            return false;
+        if (op == "get_lidar_intrinsics") {
+            lidar_intrinsics = res;
+        } else if (op == "get_imu_intrinsics") {
+            imu_intrinsics = res;
+        } else if (op == "get_sensor_info") {
+            sensor_info = res;
+        } else {
+            if (res != op) {
+                std::cerr << "init_client: command \"" << cmd << "\" failed with \""
+                          << res << "\"" << std::endl;
+                return false;
+            }
         }
+
         return true;
     };
 
@@ -143,6 +158,9 @@ std::shared_ptr<client> init_client(
     success &= do_cmd("set_udp_port_lidar", std::to_string(lidar_port));
     success &= do_cmd("set_udp_port_imu", std::to_string(imu_port));
     success &= do_cmd("set_udp_ip", udp_dest_host);
+    success &= do_cmd("get_lidar_intrinsics", "");
+    success &= do_cmd("get_imu_intrinsics", "");
+    success &= do_cmd("get_sensor_info", "");
     if (!config_commands.empty()) {
         for (const auto& config : config_commands) {
             success &= do_cmd(config.first, config.second);
@@ -159,6 +177,9 @@ std::shared_ptr<client> init_client(
     auto cli = std::make_shared<client>();
     cli->lidar_fd = lidar_fd;
     cli->imu_fd = imu_fd;
+    cli->lidar_intrinsics = lidar_intrinsics;
+    cli->imu_intrinsics = imu_intrinsics;
+    cli->sensor_info = sensor_info;
     return cli;
 }
 
@@ -201,5 +222,18 @@ bool read_lidar_packet(const client& cli, uint8_t* buf) {
 bool read_imu_packet(const client& cli, uint8_t* buf) {
     return recv_fixed(cli.imu_fd, buf, imu_packet_bytes);
 }
+
+std::string get_lidar_intrinsics(const client& cli) {
+  return cli.lidar_intrinsics;
+}
+
+std::string get_imu_intrinsics(const client& cli) {
+  return cli.imu_intrinsics;
+}
+
+std::string get_sensor_info(const client& cli) {
+  return cli.sensor_info;
+}
+
 }
 }
