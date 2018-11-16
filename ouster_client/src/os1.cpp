@@ -165,7 +165,6 @@ std::shared_ptr<client> init_client(
         for (const auto& config : config_commands) {
             success &= do_cmd(config.first, config.second);
         }
-        success &= do_cmd("reinitialize", "");
     }
 
     if (!success) return std::shared_ptr<client>();
