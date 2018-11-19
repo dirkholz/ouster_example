@@ -21,6 +21,7 @@ using ns = std::chrono::nanoseconds;
 struct client {
     int lidar_fd;
     int imu_fd;
+    std::string beam_intrinsics;
     std::string lidar_intrinsics;
     std::string imu_intrinsics;
     std::string sensor_info;
@@ -104,32 +105,39 @@ static int cfg_socket(const char* addr) {
 std::shared_ptr<client> init_client(
     const std::string& hostname, const std::string& udp_dest_host,
     int lidar_port, int imu_port,
-    const std::vector<std::pair<std::string, std::string>>& config_commands) {
+    const std::vector<std::pair<std::string, std::string>>& config_commands,
+    const bool print_debug_output) {
     int sock_fd = cfg_socket(hostname.c_str());
 
     if (sock_fd < 0) return std::shared_ptr<client>();
 
     std::string cmd;
+    std::string beam_intrinsics;
     std::string lidar_intrinsics;
     std::string imu_intrinsics;
     std::string sensor_info;
 
     auto do_cmd = [&](const std::string& op, const std::string& val) {
-        const size_t max_res_len = 1024;
+        const size_t max_res_len = 4096;
         char read_buf[max_res_len + 1];
+
+        if (print_debug_output) {
+            std::cout << "OUSTER: Sending command \""
+                      << op << "\" with value \""
+                      << val << "\"." << std::endl;
+        }
 
         ssize_t len;
         std::string cmd = op + " " + val + "\n";
-
         len = write(sock_fd, cmd.c_str(), cmd.length());
         if (len != (ssize_t)cmd.length()) {
-            std::cerr << "init_client: failed to send command" << std::endl;
+            std::cerr << "OUSTER: failed to send command" << std::endl;
             return false;
         }
 
         len = read(sock_fd, read_buf, max_res_len);
         if (len < 0) {
-            std::cerr << "read: " << std::strerror(errno) << std::endl;
+            std::cerr << "OUSTER read error: " << std::strerror(errno) << std::endl;
             return false;
         }
         read_buf[len] = '\0';
@@ -137,20 +145,25 @@ std::shared_ptr<client> init_client(
         auto res = std::string(read_buf);
         res.erase(res.find_last_not_of(" \r\n\t") + 1);
 
-        if (op == "get_lidar_intrinsics") {
+        if (print_debug_output) {
+            std::cout << "OUSTER: Received response \""
+                      << res << "\"." << std::endl;
+        }
+
+        if (op == "get_beam_intrinsics") {
+            beam_intrinsics = res;
+        } else if (op == "get_lidar_intrinsics") {
             lidar_intrinsics = res;
         } else if (op == "get_imu_intrinsics") {
             imu_intrinsics = res;
         } else if (op == "get_sensor_info") {
             sensor_info = res;
-        } else {
-            if (res != op) {
-                std::cerr << "init_client: command \"" << cmd << "\" failed with \""
-                          << res << "\"" << std::endl;
-                return false;
-            }
+        } else if (res != op) {
+            std::cerr << "OUSTER: command \""
+                      << op << "\" failed with \""
+                      << res << "\"" << std::endl;
+            return false;
         }
-
         return true;
     };
 
@@ -158,14 +171,16 @@ std::shared_ptr<client> init_client(
     success &= do_cmd("set_udp_port_lidar", std::to_string(lidar_port));
     success &= do_cmd("set_udp_port_imu", std::to_string(imu_port));
     success &= do_cmd("set_udp_ip", udp_dest_host);
-    success &= do_cmd("get_lidar_intrinsics", "");
-    success &= do_cmd("get_imu_intrinsics", "");
-    success &= do_cmd("get_sensor_info", "");
     if (!config_commands.empty()) {
         for (const auto& config : config_commands) {
             success &= do_cmd(config.first, config.second);
         }
     }
+
+    success &= do_cmd("get_beam_intrinsics", "");
+    success &= do_cmd("get_lidar_intrinsics", "");
+    success &= do_cmd("get_imu_intrinsics", "");
+    success &= do_cmd("get_sensor_info", "");
 
     if (!success) return std::shared_ptr<client>();
 
@@ -176,6 +191,7 @@ std::shared_ptr<client> init_client(
     auto cli = std::make_shared<client>();
     cli->lidar_fd = lidar_fd;
     cli->imu_fd = imu_fd;
+    cli->beam_intrinsics = beam_intrinsics;
     cli->lidar_intrinsics = lidar_intrinsics;
     cli->imu_intrinsics = imu_intrinsics;
     cli->sensor_info = sensor_info;
@@ -220,6 +236,10 @@ bool read_lidar_packet(const client& cli, uint8_t* buf) {
 
 bool read_imu_packet(const client& cli, uint8_t* buf) {
     return recv_fixed(cli.imu_fd, buf, imu_packet_bytes);
+}
+
+std::string get_beam_intrinsics(const client& cli) {
+  return cli.beam_intrinsics;
 }
 
 std::string get_lidar_intrinsics(const client& cli) {

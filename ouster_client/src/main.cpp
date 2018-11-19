@@ -66,7 +66,10 @@ int main(int argc, char** argv) {
     std::vector<std::pair<std::string, std::string>> additional_configurations;
     additional_configurations.push_back(
         std::make_pair("set_timestamp_mode", "TIME_FROM_PTP_1588"));
-    auto cli = OS1::init_client(argv[1], argv[2], 7502, 7503, additional_configurations);
+    const bool print_debug_information = true;
+    auto cli =
+        OS1::init_client(argv[1], argv[2], 7502, 7503,
+                         additional_configurations, print_debug_information);
     if (!cli) {
         std::cerr << "Failed to connect to client at: " << argv[1] << std::endl;
         return 1;

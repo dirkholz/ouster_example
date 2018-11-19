@@ -32,7 +32,8 @@ std::shared_ptr<client> init_client(
     const std::string& hostname, const std::string& udp_dest_host,
     int lidar_port, int imu_port,
     const std::vector<std::pair<std::string, std::string>>& config_commands =
-        {});
+        {},
+    const bool print_debug_output = false);
 
 /**
  * Block for up to a second until either data is ready or an error occurs.
@@ -62,6 +63,11 @@ bool read_lidar_packet(const client& cli, uint8_t* buf);
  * @returns true if an imu packet was successfully read
  */
 bool read_imu_packet(const client& cli, uint8_t* buf);
+
+/**
+ * Get beam intrinsics.
+ */
+std::string get_beam_intrinsics(const client& cli);
 
 /**
  * Get lidar intrinsics.
