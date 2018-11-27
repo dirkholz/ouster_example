@@ -7,7 +7,9 @@
 
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -86,12 +88,55 @@ static int cfg_socket(const char* addr) {
             continue;
         }
 
-        if (connect(sock_fd, ai->ai_addr, ai->ai_addrlen) == -1) {
-            close(sock_fd);
-            continue;
+        struct timeval timeout;
+        timeout.tv_sec = 10;
+        timeout.tv_usec = 0;
+        unsigned long mode = 1;
+        int result;
+        if ((result = ioctl(sock_fd, FIONBIO, &mode)) < 0) {
+          std::cout << "ioctlsocket failed with error: " << result << std::endl;
         }
 
-        break;
+        if ((result = connect(sock_fd, ai->ai_addr, ai->ai_addrlen)) == -1) {
+          if (errno != EINPROGRESS) {
+            std::cout << "connect failed with error: " << result << std::endl;
+            close(sock_fd);
+            continue;
+          }
+        }
+
+        if (result == 0) {
+          return sock_fd;
+        }
+
+        fd_set rset, wset;
+        FD_ZERO(&rset);
+        FD_SET(sock_fd, &rset);
+        wset = rset;
+        if ((result = select(sock_fd + 1, &rset, &wset, NULL, &timeout)) < 0)
+          return -1;
+        if (result == 0) {
+          errno = ETIMEDOUT;
+          return -1;
+        }
+
+        mode = 0;
+        if ((result = ioctl(sock_fd, FIONBIO, &mode)) < 0) {
+          std::cout << "ioctlsocket failed with error: " << result << std::endl;
+        }
+
+        fd_set write, error;
+        FD_ZERO(&write);
+        FD_ZERO(&error);
+        FD_SET(sock_fd, &write);
+        FD_SET(sock_fd, &error);
+
+        select(0, NULL, &write, &error, &timeout);
+        if (FD_ISSET(sock_fd, &write)) {
+          break;
+        }
+
+        continue;
     }
 
     freeaddrinfo(info_start);
